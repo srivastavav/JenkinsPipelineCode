@@ -1,0 +1,82 @@
+node 
+{
+  
+//    def sonarqube = tool name: 'sonarqube', type: 'hudson.plugins.sonar.SonarRunnerInstallation'
+stage('SCM')
+  {
+       //git credentialsId: 'c0043cc4-7425-4106-9701-e24fa6c7f6cf', url: 'https://github.com/srivastavav/jpetstore-6.git'
+         git 'https://github.com/srivastavav/jpetstore-6.git'
+  }
+    stage('Build')
+  {
+   sh '/opt/maven/bin/mvn clean package'
+  }
+  stage('Junit')
+  {
+      junit '**/target/surefire-reports/*.xml'
+  }
+  //stage('Sonar')
+  //{
+//      sh "${sonarqube}/bin/sonar-runner -Dsonar.host.url=http://10.1.23.187:9000/sonar/ -Dsonar.login=72a01a408859dacff0216b865eba711987d75a17 -Dsonar.projectName=$JOB_NAME -Dsonar.projectVersion=1.0 -Dsonar.projectKey=JPetStore -Dsonar.sources=/var/lib/jenkinstest/workspace/$JOB_NAME/src/main  -Dsonar.tests=/var/lib/jenkinstest/workspace/$JOB_NAME/src/test"
+      //codesonar conditions: [], credentialId: 'vikas', hubAddress: '10.1.23.187:9000/sonar', projectName: '${JOB_NAME}', protocol: 'http'
+      stage('SonarQube analysis') {
+        withSonarQubeEnv('sonarqube') {
+            sh '/opt/maven/bin/mvn org.sonarsource.scanner.maven:sonar-maven-plugin:3.2:sonar'
+        } 
+      
+    stage('Nexus')
+    {
+        nexusArtifactUploader artifacts: [[artifactId: 'HCL', classifier: 'JpetStorep-BN_${BUILD_NUMBER}', file: '/var/lib/jenkins/workspace/JPetStore/target/jpetstore.war', type: 'war']], credentialsId: 'fdb3a272-fd8c-4015-8d35-cfdcf6b03fe9', groupId: 'DevOps', nexusUrl: '10.1.23.187:8081/nexus', nexusVersion: 'nexus2', protocol: 'http', repository: 'VikasRepo', version: '1.0'
+    } 
+    
+
+stage('Create Component version in UDeploy')
+    {
+        
+        step([$class: 'UCDeployPublisher',
+        siteName: 'UCD_Server',
+        component: [
+            $class: 'com.urbancode.jenkins.plugins.ucdeploy.VersionHelper$VersionBlock',
+            componentName: 'JPetStore6_cmp',
+            createComponent: [
+                $class: 'com.urbancode.jenkins.plugins.ucdeploy.ComponentHelper$CreateComponentBlock',
+                componentTemplate: '',
+                componentApplication: 'JPetStore6'
+            ],
+            delivery: [
+                $class: 'com.urbancode.jenkins.plugins.ucdeploy.DeliveryHelper$Push',
+                pushVersion: '${BUILD_NUMBER}_Jenkins',
+                baseDir: '/var/lib/jenkins/workspace/JPetStore/target/',
+                fileIncludePatterns: '*.zip',
+                fileExcludePatterns: '',
+                pushProperties: 'jenkins.server=UCD_Server\njenkins.reviewed=false',
+                pushDescription: 'Pushed from Jenkins'
+               ]
+              ]
+            ])
+    }
+            stage('Publish to UDeploy')
+             {
+             step([$class: 'UCDeployPublisher',
+        siteName: 'UCD_Server',
+                    deploy: [
+            $class: 'com.urbancode.jenkins.plugins.ucdeploy.DeployHelper$DeployBlock',
+            deployApp: 'JPetStore6',
+            deployEnv: 'DEV',
+            deployProc: 'JPetStore6Process',
+            createProcess: [
+                $class: 'com.urbancode.jenkins.plugins.ucdeploy.ProcessHelper$CreateProcessBlock',
+                processComponent: 'Deploy application component'
+            ],
+            deployVersions: 'JPetStore6_cmp:${BUILD_NUMBER}_Jenkins',
+             deployOnlyChanged: false
+         ]
+        
+])
+}
+}
+    }
+    
+    
+
+  
